@@ -101,12 +101,12 @@ router.get("/:id", (req, res) => {
     return res.status(404).json({ error: "Trail not found" });
   }
 
-  // Fetch stops for this trail (omit challenge_payload for security)
+  // Fetch stops for this trail (include challenge_payload for frontend client and trivia parsing)
   const stops = db
     .prepare(
       `
       SELECT id, title, description, latitude, longitude, order_index,
-             challenge_type, geofence_radius_m, xp_reward
+             challenge_type, challenge_payload, geofence_radius_m, xp_reward
       FROM stops
       WHERE trail_id = ?
       ORDER BY order_index ASC
