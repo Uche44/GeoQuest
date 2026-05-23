@@ -266,6 +266,32 @@ export default function Home() {
     }
   };
 
+  // Trigger MiniPay native QR Scanner
+  const handleScanQr = async () => {
+    if (typeof window === "undefined" || !window.ethereum) {
+      addLog("QR Scanner: No wallet detected");
+      alert("No wallet provider detected.");
+      return;
+    }
+    try {
+      addLog("Launching native MiniPay QR scanner...");
+      const result = await window.ethereum.request({
+        method: "minipay_scanQrCode",
+        params: [],
+      });
+      if (result) {
+        addLog(`QR Scan Success: "${result}"`);
+        setChallengeAnswer(result);
+      } else {
+        addLog("QR Scan cancelled or returned empty");
+      }
+    } catch (err: any) {
+      console.error("MiniPay QR scan error:", err);
+      addLog(`QR Scan failed: ${err.message}`);
+      alert(`QR Scan failed: ${err.message}`);
+    }
+  };
+
   // Verify Stop Presence & Challenge
   const handleVerifyStop = async () => {
     if (!address) {
@@ -818,14 +844,26 @@ export default function Home() {
                       {/* QR or Secret Code Entry */}
                       {(activeStop.challenge_type === "qr" || activeStop.challenge_type === "code") && (
                         <div className="flex flex-col gap-2">
-                          <input
-                            type="text"
-                            placeholder={activeStop.challenge_type === "qr" ? "Enter scanned QR string (e.g. BOGOBIRI2025)" : "Enter secret code"}
-                            value={challengeAnswer}
-                            onChange={(e) => setChallengeAnswer(e.target.value)}
-                            disabled={!activeStopUnlocked || verifyingStop}
-                            className="w-full px-3.5 py-2.5 rounded-xl border border-[rgba(13,13,11,0.12)] bg-[#f5f2eb] text-xs font-mono text-ink placeholder:text-[#6b6b5e] focus:outline-none focus:border-[#2d6a4f] disabled:opacity-50"
-                          />
+                          <div className="flex gap-2">
+                            <input
+                              type="text"
+                              placeholder={activeStop.challenge_type === "qr" ? "Enter scanned QR string (e.g. BOGOBIRI2025)" : "Enter secret code"}
+                              value={challengeAnswer}
+                              onChange={(e) => setChallengeAnswer(e.target.value)}
+                              disabled={!activeStopUnlocked || verifyingStop}
+                              className="flex-1 px-3.5 py-2.5 rounded-xl border border-[rgba(13,13,11,0.12)] bg-[#f5f2eb] text-xs font-mono text-ink placeholder:text-[#6b6b5e] focus:outline-none focus:border-[#2d6a4f] disabled:opacity-50"
+                            />
+                            {activeStop.challenge_type === "qr" && isMiniPay && (
+                              <button
+                                onClick={handleScanQr}
+                                disabled={!activeStopUnlocked || verifyingStop}
+                                className="px-4 py-2.5 rounded-xl bg-[#2d6a4f] hover:bg-[#1e4d37] text-white font-bold text-xs transition-colors uppercase tracking-wider flex items-center justify-center gap-1.5 disabled:opacity-50 shrink-0"
+                              >
+                                <QrCode className="w-3.5 h-3.5" />
+                                Scan
+                              </button>
+                            )}
+                          </div>
                           {activeStop.challenge_type === "qr" && (
                             <button
                               onClick={() => setChallengeAnswer(activeStop.challenge_payload || "")}
