@@ -111,7 +111,7 @@ export default function Home() {
 
   // App Navigation & UI State
   const [activeTab, setActiveTab] = useState<"explore" | "quest" | "leaderboard" | "profile">("explore");
-  const [apiBaseUrl, setApiBaseUrl] = useState("http://localhost:3001");
+  const [apiBaseUrl, setApiBaseUrl] = useState(process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001");
   const [trailContractAddress, setTrailContractAddress] = useState(DEFAULT_TRAIL_CONTRACT);
   
   // Player GPS / Simulated Location
@@ -531,7 +531,7 @@ export default function Home() {
             <Sliders className="w-4 h-4 text-[#6b6b5e]" />
           </button>
 
-          {/* Wallet Address Label */}
+          {/* Wallet Address / Connect Button */}
           {address ? (
             <div className="flex flex-col items-end">
               <span className="text-[10px] font-mono font-medium text-[#2d6a4f] bg-[rgba(45,106,79,0.08)] px-2 py-0.5 rounded-full">
@@ -541,7 +541,13 @@ export default function Home() {
                 {balances.find(b => b.symbol === "USDm")?.human || "0.00"} USDm
               </span>
             </div>
+          ) : isMiniPay ? (
+            /* Inside MiniPay — auto-connecting, never show a Connect button */
+            <span className="text-[10px] font-mono text-[#6b6b5e] animate-pulse">
+              {walletLoading ? "Connecting…" : "No account"}
+            </span>
           ) : (
+            /* Outside MiniPay (desktop browser / MetaMask) — show manual connect */
             <button
               onClick={connectWalletOutsideMiniPay}
               className="px-3 py-1.5 rounded-full bg-[#2d6a4f] hover:bg-[#1e4d37] text-white text-xs font-bold transition-all uppercase tracking-wider"

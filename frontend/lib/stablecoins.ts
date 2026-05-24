@@ -1,4 +1,4 @@
-import { createPublicClient, http, erc20Abi, formatUnits } from "viem";
+import { createPublicClient, http, fallback, erc20Abi, formatUnits } from "viem";
 import { celo, celoSepolia } from "viem/chains";
 
 // Stablecoin addresses for Celo Mainnet and Celo Sepolia Testnet
@@ -43,15 +43,27 @@ export function getStablesForChain(chainId: number): StableToken[] {
  * Returns the public client for a given chain.
  */
 export function getPublicClient(chainId: number) {
-  const chain = chainId === 42220 ? celo : celoSepolia;
-  const rpcUrl = chainId === 42220 
-    ? "https://forno.celo.org" 
-    : "https://alphajores-forno.celo-testnet.org";
-    
-  return createPublicClient({
-    chain,
-    transport: http(rpcUrl)
-  });
+  const isCeloMainnet = chainId === 42220;
+  const chain = isCeloMainnet ? celo : celoSepolia;
+
+  if (isCeloMainnet) {
+    return createPublicClient({
+      chain,
+      transport: fallback([
+        http("https://forno.celo.org"),
+        http("https://rpc.ankr.com/celo"),
+      ])
+    });
+  } else {
+    // Celo Alfajores / Sepolia testnet
+    return createPublicClient({
+      chain,
+      transport: fallback([
+        http("https://alfajores-forno.celo-testnet.org"),
+        http("https://celo-alfajores.drpc.org"),
+      ])
+    });
+  }
 }
 
 /**

@@ -1,6 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
-import { createWalletClient, custom } from "viem";
-import { celoSepolia } from "viem/chains";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { getAllBalances, TokenBalance } from "../lib/stablecoins";
 
 // Extend the window interface for MiniPay
@@ -10,137 +8,166 @@ declare global {
   }
 }
 
+/**
+ * Wait for window.ethereum to be injected, with a timeout.
+ * MiniPay injects the provider asynchronously after the WebView loads.
+ */
+function waitForEthereum(timeoutMs = 3000): Promise<any | null> {
+  return new Promise((resolve) => {
+    if (typeof window === "undefined") return resolve(null);
+    if (window.ethereum) return resolve(window.ethereum);
+
+    let elapsed = 0;
+    const interval = 100;
+    const timer = setInterval(() => {
+      elapsed += interval;
+      if (window.ethereum) {
+        clearInterval(timer);
+        resolve(window.ethereum);
+      } else if (elapsed >= timeoutMs) {
+        clearInterval(timer);
+        resolve(null); // timed out — not in a wallet browser
+      }
+    }, interval);
+  });
+}
+
 export function useMiniPay() {
   const [address, setAddress] = useState<`0x${string}` | null>(null);
-  const [chainId, setChainId] = useState<number>(11142220); // Default to Celo Sepolia
+  const [chainId, setChainId] = useState<number>(44787); // Default Celo Alfajores
   const [balances, setBalances] = useState<TokenBalance[]>([]);
   const [isMiniPay, setIsMiniPay] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const initializedRef = useRef(false);
 
-  const refreshBalances = useCallback(async (currentAddress = address, currentChainId = chainId) => {
-    if (!currentAddress) return;
-    try {
-      const tokenBalances = await getAllBalances(currentAddress, currentChainId);
-      setBalances(tokenBalances);
-    } catch (err: any) {
-      console.error("Error refreshing balances:", err);
-      setError(err?.message || "Failed to load stablecoin balances");
-    }
-  }, [address, chainId]);
+  const refreshBalances = useCallback(
+    async (currentAddress = address, currentChainId = chainId) => {
+      if (!currentAddress) return;
+      try {
+        const tokenBalances = await getAllBalances(currentAddress, currentChainId);
+        setBalances(tokenBalances);
+      } catch (err: any) {
+        console.warn("Balance fetch failed (non-critical):", err?.message);
+      }
+    },
+    [address, chainId]
+  );
 
   const init = useCallback(async () => {
+    if (initializedRef.current) return;
+    initializedRef.current = true;
+
     setError(null);
-    if (typeof window === "undefined" || !window.ethereum) {
+    setIsLoading(true);
+
+    // Wait for MiniPay to inject window.ethereum (up to 3 seconds)
+    const provider = await waitForEthereum(3000);
+
+    if (!provider) {
+      console.log("No Ethereum provider found — running in browser without wallet.");
       setIsLoading(false);
       return;
     }
 
     try {
-      const mp = window.ethereum.isMiniPay === true;
+      // Detect MiniPay specifically
+      const mp = provider.isMiniPay === true;
       setIsMiniPay(mp);
+      console.log(`[GeoQuest] Wallet detected. isMiniPay=${mp}`);
 
-      // We auto-connect in MiniPay. Outside MiniPay, we can let user request connection
-      // but we still try to get existing connected accounts.
-      const client = createWalletClient({
-        transport: custom(window.ethereum),
-      });
-
-      // Request accounts. In MiniPay, this resolves instantly without zero-click.
-      const accounts = await client.getAddresses();
-      
-      let walletChainId = 11142220; // Default Celo Sepolia
+      // Get chain
+      let walletChainId = 44787;
       try {
-        walletChainId = await window.ethereum.request({ method: "eth_chainId" }).then((hex: string) => parseInt(hex, 16));
-      } catch (chainErr) {
-        console.warn("Could not retrieve chainId, defaulting to Celo Sepolia", chainErr);
+        const hexChainId = await provider.request({ method: "eth_chainId" });
+        walletChainId = parseInt(hexChainId, 16);
+        console.log(`[GeoQuest] Chain ID: ${walletChainId}`);
+      } catch {
+        console.warn("Could not get chainId, defaulting to Alfajores (44787)");
       }
-
       setChainId(walletChainId);
 
+      // Request accounts — in MiniPay this resolves INSTANTLY with no popup.
+      // In MetaMask/desktop browsers this triggers the approval popup.
+      const accounts: string[] = await provider.request({ method: "eth_requestAccounts" });
+      console.log(`[GeoQuest] Accounts:`, accounts);
+
       if (accounts && accounts.length > 0) {
-        const activeAddr = accounts[0];
+        const activeAddr = accounts[0] as `0x${string}`;
         setAddress(activeAddr);
-        await refreshBalances(activeAddr, walletChainId);
-      } else if (mp) {
-        // If in MiniPay, try eth_requestAccounts to auto-connect
-        const reqAccounts = await window.ethereum.request({ method: "eth_requestAccounts" });
-        if (reqAccounts && reqAccounts.length > 0) {
-          const activeAddr = reqAccounts[0];
-          setAddress(activeAddr);
-          await refreshBalances(activeAddr, walletChainId);
-        }
+        // Fetch balances in background — don't block rendering
+        refreshBalances(activeAddr, walletChainId).catch(console.warn);
       }
     } catch (err: any) {
-      console.error("MiniPay wallet initialization error:", err);
+      console.error("[GeoQuest] Wallet init error:", err);
       setError(err?.message || "Failed to connect wallet");
     } finally {
       setIsLoading(false);
     }
   }, [refreshBalances]);
 
-  const connectWalletOutsideMiniPay = async () => {
-    if (typeof window === "undefined" || !window.ethereum) {
-      alert("No Ethereum provider detected. Please install a compatible wallet or use Opera MiniPay.");
+  // Manual connect — only used outside MiniPay (e.g. desktop MetaMask)
+  const connectWalletOutsideMiniPay = useCallback(async () => {
+    const provider = window.ethereum;
+    if (!provider) {
+      alert("No Ethereum wallet detected. Please use MiniPay or install MetaMask.");
       return;
     }
     setIsLoading(true);
+    setError(null);
     try {
-      const reqAccounts = await window.ethereum.request({ method: "eth_requestAccounts" });
-      let walletChainId = 11142220;
+      const accounts: string[] = await provider.request({ method: "eth_requestAccounts" });
+      let walletChainId = 44787;
       try {
-        walletChainId = await window.ethereum.request({ method: "eth_chainId" }).then((hex: string) => parseInt(hex, 16));
-      } catch (e) {}
-      
+        const hex = await provider.request({ method: "eth_chainId" });
+        walletChainId = parseInt(hex, 16);
+      } catch {}
       setChainId(walletChainId);
-      if (reqAccounts && reqAccounts.length > 0) {
-        const activeAddr = reqAccounts[0];
+      if (accounts?.length > 0) {
+        const activeAddr = accounts[0] as `0x${string}`;
         setAddress(activeAddr);
         await refreshBalances(activeAddr, walletChainId);
       }
     } catch (err: any) {
-      console.error("Manual connect error:", err);
       setError(err?.message || "User rejected connection");
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [refreshBalances]);
 
   useEffect(() => {
     init();
+  }, [init]);
 
-    // Listen for account or chain changes
-    if (typeof window !== "undefined" && window.ethereum) {
-      const handleAccountsChanged = (accounts: string[]) => {
-        if (accounts.length > 0) {
-          const newAddr = accounts[0] as `0x${string}`;
-          setAddress(newAddr);
-          refreshBalances(newAddr, chainId);
-        } else {
-          setAddress(null);
-          setBalances([]);
-        }
-      };
+  // Subscribe to wallet events once provider is available
+  useEffect(() => {
+    const provider = window.ethereum;
+    if (!provider) return;
 
-      const handleChainChanged = (hexChainId: string) => {
-        const newChainId = parseInt(hexChainId, 16);
-        setChainId(newChainId);
-        if (address) {
-          refreshBalances(address, newChainId);
-        }
-      };
+    const handleAccountsChanged = (accounts: string[]) => {
+      if (accounts.length > 0) {
+        const newAddr = accounts[0] as `0x${string}`;
+        setAddress(newAddr);
+        refreshBalances(newAddr, chainId);
+      } else {
+        setAddress(null);
+        setBalances([]);
+      }
+    };
 
-      window.ethereum.on("accountsChanged", handleAccountsChanged);
-      window.ethereum.on("chainChanged", handleChainChanged);
+    const handleChainChanged = (hexChainId: string) => {
+      const newChainId = parseInt(hexChainId, 16);
+      setChainId(newChainId);
+    };
 
-      return () => {
-        if (window.ethereum.removeListener) {
-          window.ethereum.removeListener("accountsChanged", handleAccountsChanged);
-          window.ethereum.removeListener("chainChanged", handleChainChanged);
-        }
-      };
-    }
-  }, [init, refreshBalances, chainId, address]);
+    provider.on?.("accountsChanged", handleAccountsChanged);
+    provider.on?.("chainChanged", handleChainChanged);
+
+    return () => {
+      provider.removeListener?.("accountsChanged", handleAccountsChanged);
+      provider.removeListener?.("chainChanged", handleChainChanged);
+    };
+  }, [chainId, refreshBalances]);
 
   return {
     address,
@@ -150,6 +177,6 @@ export function useMiniPay() {
     isLoading,
     error,
     refreshBalances,
-    connectWalletOutsideMiniPay
+    connectWalletOutsideMiniPay,
   };
 }
