@@ -1,4 +1,5 @@
 import express from "express";
+import path from "path";
 import db from "../db.js";
 
 const router = express.Router();
@@ -160,6 +161,114 @@ router.get("/analytics/:merchant_id", (req, res) => {
   };
 
   res.json({ merchant, summary, trails });
+});
+
+/**
+ * GET /api/merchants/list
+ * Lists all registered merchants.
+ */
+router.get("/list", (_req, res) => {
+  try {
+    const list = db.prepare(`SELECT * FROM merchants ORDER BY business_name ASC`).all();
+    res.json({ success: true, merchants: list });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/merchants/trail/link
+ * Links a local database trail to its deployed on-chain ID and sets its budget.
+ *
+ * Body: wallet_address, trail_id, on_chain_trail_id, total_budget
+ */
+router.post("/trail/link", (req, res) => {
+  const { wallet_address, trail_id, on_chain_trail_id, total_budget } = req.body;
+
+  if (!wallet_address || trail_id == null || on_chain_trail_id == null || total_budget == null) {
+    return res.status(400).json({ error: "Missing required fields" });
+  }
+
+  const merchant = db.prepare(`SELECT id FROM merchants WHERE wallet_address = ?`).get(wallet_address.toLowerCase());
+  if (!merchant) {
+    return res.status(404).json({ error: "Merchant not found" });
+  }
+
+  const trail = db.prepare(`SELECT * FROM trails WHERE id = ? AND merchant_id = ?`).get(trail_id, merchant.id);
+  if (!trail) {
+    return res.status(404).json({ error: "Trail not found or not owned by this merchant" });
+  }
+
+  try {
+    db.prepare(`
+      UPDATE trails
+      SET on_chain_trail_id = ?, total_budget = ?, remaining_budget = ?
+      WHERE id = ?
+    `).run(on_chain_trail_id, total_budget, total_budget, trail_id);
+
+    res.json({ success: true, message: "Trail successfully linked on-chain", on_chain_trail_id });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/merchants/trail/activate
+ * Sets the active status of a trail in the database.
+ *
+ * Body: wallet_address, trail_id, active (0 or 1)
+ */
+router.post("/trail/activate", (req, res) => {
+  const { wallet_address, trail_id, active } = req.body;
+
+  if (!wallet_address || trail_id == null || active == null) {
+    return res.status(400).json({ error: "Missing required fields" });
+  }
+
+  const merchant = db.prepare(`SELECT id FROM merchants WHERE wallet_address = ?`).get(wallet_address.toLowerCase());
+  if (!merchant) {
+    return res.status(404).json({ error: "Merchant not found" });
+  }
+
+  const trail = db.prepare(`SELECT * FROM trails WHERE id = ? AND merchant_id = ?`).get(trail_id, merchant.id);
+  if (!trail) {
+    return res.status(404).json({ error: "Trail not found or not owned by this merchant" });
+  }
+
+  try {
+    db.prepare(`UPDATE trails SET active = ? WHERE id = ?`).run(active ? 1 : 0, trail_id);
+    res.json({ success: true, message: `Trail active status set to ${active ? 1 : 0}` });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/merchants/reset-db
+ * Reset database: clears all dynamic merchant data and re-seeds the default ones.
+ */
+router.post("/reset-db", async (_req, res) => {
+  try {
+    console.log("🔄 Resetting database...");
+    
+    // Clear dynamic records
+    db.prepare(`DELETE FROM stop_completions`).run();
+    db.prepare(`DELETE FROM trail_completions`).run();
+    db.prepare(`DELETE FROM stops`).run();
+    db.prepare(`DELETE FROM trails`).run();
+    db.prepare(`DELETE FROM merchants`).run();
+    db.prepare(`DELETE FROM users`).run();
+
+    // Re-run seed logic dynamically or import seed script function
+    const seedScriptPath = path.resolve("backend/seed.js");
+    const { runSeed } = await import(seedScriptPath);
+    await runSeed();
+
+    res.json({ success: true, message: "Database successfully reset and re-seeded default trails." });
+  } catch (err) {
+    console.error("Database reset error:", err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 export default router;

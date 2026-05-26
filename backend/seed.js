@@ -93,8 +93,8 @@ function seed() {
 
   // ─── Trails ────────────────────────────────────────────────────────────────
   const insertTrail = db.prepare(`
-    INSERT INTO trails (merchant_id, title, description, category, difficulty, reward_amount, reward_token, estimated_duration_mins, total_budget, remaining_budget, active)
-    VALUES (@merchant_id, @title, @description, @category, @difficulty, @reward_amount, @reward_token, @estimated_duration_mins, @total_budget, @remaining_budget, @active)
+    INSERT INTO trails (merchant_id, title, description, category, difficulty, reward_amount, reward_token, estimated_duration_mins, total_budget, remaining_budget, active, on_chain_trail_id)
+    VALUES (@merchant_id, @title, @description, @category, @difficulty, @reward_amount, @reward_token, @estimated_duration_mins, @total_budget, @remaining_budget, @active, @on_chain_trail_id)
   `);
 
   const trails = [
@@ -110,6 +110,7 @@ function seed() {
       total_budget: 50,
       remaining_budget: 50,
       active: 1,
+      on_chain_trail_id: 0,
     },
     {
       merchant_id: merchantIds["Bogobiri House"],
@@ -123,6 +124,7 @@ function seed() {
       total_budget: 75,
       remaining_budget: 75,
       active: 1,
+      on_chain_trail_id: 1,
     },
     {
       merchant_id: merchantIds["Jazzhole Records"],
@@ -136,6 +138,7 @@ function seed() {
       total_budget: 40,
       remaining_budget: 40,
       active: 1,
+      on_chain_trail_id: 2,
     },
   ];
 
@@ -277,4 +280,10 @@ function seed() {
   console.log("\n✅ Seed complete. GeoQuest database is ready.");
 }
 
-seed();
+// Export for programmatic use (e.g., reset DB endpoint)
+export { seed as runSeed };
+
+// Run automatically only if executed directly
+if (process.argv[1] && (process.argv[1].endsWith("seed.js") || process.argv[1].endsWith("seed"))) {
+  seed();
+}

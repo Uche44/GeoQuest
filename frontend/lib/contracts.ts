@@ -1,8 +1,8 @@
 // ABIs and configurations for Celo smart contracts
 
 // Default addresses (can be changed in the Dev Simulator drawer or env)
-export const DEFAULT_TRAIL_CONTRACT = process.env.NEXT_PUBLIC_TRAIL_CONTRACT_ADDRESS || "0x5FbDB2315678afecb367f032d93F642f64180aa3"; // Default Hardhat local first address
-export const DEFAULT_STAMP_CONTRACT = process.env.NEXT_PUBLIC_STAMP_CONTRACT_ADDRESS || "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512";
+export const DEFAULT_TRAIL_CONTRACT = process.env.NEXT_PUBLIC_TRAIL_CONTRACT_ADDRESS || "0xB01E1B427d9579a0dE70C4EA661e7672D450e428"; // Live Celo Sepolia address
+export const DEFAULT_STAMP_CONTRACT = process.env.NEXT_PUBLIC_STAMP_CONTRACT_ADDRESS || "0x92f8007d36c751D6707eef7f74E5Fb0c61669E9d";
 
 export const GEOQUEST_TRAIL_ABI = [
   {
@@ -13,6 +13,36 @@ export const GEOQUEST_TRAIL_ABI = [
       { "internalType": "bytes", "name": "signature", "type": "bytes" }
     ],
     "name": "claimReward",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      { "internalType": "address", "name": "rewardToken", "type": "address" },
+      { "internalType": "uint256", "name": "rewardPerPlayer", "type": "uint256" }
+    ],
+    "name": "createTrail",
+    "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      { "internalType": "uint256", "name": "trailId", "type": "uint256" },
+      { "internalType": "uint256", "name": "amount", "type": "uint256" }
+    ],
+    "name": "fundTrail",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      { "internalType": "uint256", "name": "trailId", "type": "uint256" },
+      { "internalType": "bool", "name": "active", "type": "bool" }
+    ],
+    "name": "setTrailActive",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
